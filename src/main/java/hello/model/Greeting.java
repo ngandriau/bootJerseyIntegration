@@ -1,4 +1,4 @@
-package hello.api;
+package hello.model;
 
 
 public class Greeting {

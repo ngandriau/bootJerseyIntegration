@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xmlns:int="http://www.springframework.org/schema/integration"
+       xmlns:amqp="http://www.springframework.org/schema/integration/amqp"
+       xmlns:rabbit="http://www.springframework.org/schema/rabbit"
+
+
+       xsi:schemaLocation="http://www.springframework.org/schema/integration http://www.springframework.org/schema/integration/spring-integration.xsd
+                           http://www.springframework.org/schema/integration/amqp http://www.springframework.org/schema/integration/amqp/spring-integration-amqp.xsd
+    http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans.xsd
+    http://www.springframework.org/schema/rabbit http://www.springframework.org/schema/rabbit/spring-rabbit.xsd">
+
+
+    <bean id="receiver" class="hello.messaging.Receiver"/>
+
+    <bean id="connectionFactory"
+          class="org.springframework.amqp.rabbit.connection.CachingConnectionFactory">
+        <constructor-arg value="localhost"/>
+        <property name="username" value="guest"/>
+        <property name="password" value="guest"/>
+    </bean>
+
+    <!-- Administrative connection to RabbitMQ (used to create objects) -->
+    <rabbit:admin connection-factory="connectionFactory"/>
+
+    <int:channel id="mainChannel"/>
+
+    <rabbit:queue name="helloWorldQueue" durable="true" auto-delete="false" exclusive="false"/>
+
+    <!-- In-bound Channel Adapter responsible for reading messages from out-bound e-mail queue RabbitMQ and passing them to the out-bound e-mail channel -->
+    <amqp:inbound-channel-adapter id="incommingMessageProcessorAdapter"
+                                  advice-chain="outboundMessageErrorInterceptor"
+                                  auto-startup="true"
+                                  channel="mainChannel"
+                                  concurrent-consumers="10"
+                                  connection-factory="connectionFactory"
+                                  queue-names="helloWorldQueue"/>
+
+    <int:outbound-channel-adapter id="outgoingMessageAdapter"
+                                  auto-startup="true"
+                                  channel="mainChannel"
+                                  method="receiveMessage"
+                                  ref="receiver"/>
+
+    <bean id="outboundMessageErrorInterceptor"
+          class="org.springframework.amqp.rabbit.config.StatelessRetryOperationsInterceptorFactoryBean">
+        <property name="messageRecoverer" ref="messageErrorRecoverer"/>
+        <property name="retryOperations" ref="messageErrorRetryTemplate"/>
+    </bean>
+
+    <bean id="messageErrorRetryTemplate" class="org.springframework.retry.support.RetryTemplate">
+        <property name="backOffPolicy" ref="messageErrorBackoffPolicy"/>
+        <property name="retryPolicy" ref="messageErrorRetryPolicy"/>
+    </bean>
+
+    <bean id="messageErrorBackoffPolicy" class="org.springframework.retry.backoff.FixedBackOffPolicy">
+        <property name="backOffPeriod" value="1"/>
+    </bean>
+
+    <bean id="messageErrorRetryPolicy" class="org.springframework.retry.policy.SimpleRetryPolicy">
+        <property name="maxAttempts" value="3"/>
+    </bean>
+
+    <bean id="messageErrorRecoverer" class="hello.messaging.MessageErrorRecoverer"/>
+
+
+</beans>
